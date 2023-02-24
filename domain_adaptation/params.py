@@ -1,17 +1,4 @@
-"""Params for ADDA."""
-
-# params for dataset and data loader
-data_root = "data"
-dataset_mean_value = 0.5
-dataset_std_value = 0.5
-dataset_mean = (dataset_mean_value, dataset_mean_value, dataset_mean_value)
-dataset_std = (dataset_std_value, dataset_std_value, dataset_std_value)
-batch_size = 50
-image_size = 64
-
-
 # params for training network
-num_gpu = 1
 num_epochs_pre = 3
 log_step_pre = 30
 eval_step_pre = 5

@@ -1,44 +1,49 @@
 from itertools import count
+from typing import Optional
 
 # from test import eval_tgt
 
-import loss_cdan
-import params
+from domain_adaptation import loss_cdan
+
+# import params
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
+from finetune.eval import evaluate
+
+lr = 1e-4
+epochs = 5
+log_step = 10
 
 
 def train_target(
     encoder: torch.nn.Module,
     classifier: torch.nn.Module,
     critic: torch.nn.Module,
-    random_layer: torch.nn.Module,
+    random_layer: Optional[torch.nn.Module],
     source_dataloader: DataLoader,
     target_dataloader: DataLoader,
     eval_dataloader: DataLoader,
     device: torch.device,
 ):
-
-    encoder.train()
-    critic.train()
-    classifier.train()
+    print("training start using target data")
 
     softmax = nn.Softmax(dim=1)
     optimizer = optim.Adam(
         list(encoder.parameters()) + list(classifier.parameters()),
-        lr=params.c_learning_rate,
-        betas=(params.beta1, params.beta2),
+        lr=lr,
     )
     optimizer_critic = optim.Adam(
         critic.parameters(),
-        lr=params.d_learning_rate,
-        betas=(params.beta1, params.beta2),
+        lr=lr,
     )
     len_data_loader = min(len(source_dataloader), len(target_dataloader))
     true_labels = []
 
-    for epoch in range(params.num_epochs):
+    for epoch in range(epochs):
+        encoder.train()
+        critic.train()
+        classifier.train()
         correct = 0
         total = 0
         total_loss = 0
@@ -59,8 +64,12 @@ def train_target(
             optimizer_critic.zero_grad()
             optimizer.zero_grad()
 
-            source_feature = encoder(source_batch)
-            target_feature = encoder(target_batch)
+            source_feature = encoder(
+                **source_batch, output_hidden_states=True
+            ).hidden_states[-1][:, 0, :]
+            target_feature = encoder(
+                **target_batch, output_hidden_states=True
+            ).hidden_states[-1][:, 0, :]
             concat_feature = torch.cat((source_feature, target_feature), 0)
 
             source_output = classifier(source_feature)
@@ -88,21 +97,21 @@ def train_target(
 
             # torch.nn.utils.clip_grad_norm_(encoder.parameters(), 1.0)
             # torch.nn.utils.clip_grad_norm_(critic.parameters(), 1.0)
-            if epoch > 3:
-                optimizer.step()
+            # if epoch > 3:
+            optimizer.step()
 
-                optimizer_critic.step()
+            optimizer_critic.step()
 
             _, pred_cls = torch.max(source_output.data, 1)
             correct += (pred_cls == labels_source).sum().item()
             total += labels_source.size(0)
 
-            if (step + 1) % params.log_step == 0:
+            if (step + 1) % log_step == 0:
                 print(
                     "Epoch [{}/{}] Step [{}/{}]:"
                     "transfer_loss={:.3f} total_loss={:.3f} acc={:.3f}".format(
                         epoch + 1,
-                        params.num_epochs,
+                        epochs,
                         step + 1,
                         int(len_data_loader / source_dataloader.batch_size),  # type: ignore
                         transfer_loss.item(),
@@ -110,10 +119,7 @@ def train_target(
                         correct / total,
                     )
                 )
-
-        print(f"critic accuracy after {epoch} epochs is {correct / total}")
-        # eval_tgt(
-        #     encoder, classifier, target_dataloader, gpu_flag=gpu_flag, gpu_name=gpu_name
-        # )
+        print(f"{epoch=}")
+        print(evaluate(encoder, classifier, eval_dataloader, device))
 
     return encoder, classifier
